@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Conferência de Objetos</title>
+    <!-- Carrega o Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Define a fonte Inter (padrão do Tailwind) */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f7f7;
+        }
+        /* Estilo para a barra de rolagem para torná-la mais discreta */
+        textarea::-webkit-scrollbar, ul::-webkit-scrollbar {
+            width: 8px;
+        }
+        textarea::-webkit-scrollbar-thumb, ul::-webkit-scrollbar-thumb {
+            background-color: #cbd5e1; /* Cor de cinza claro */
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <div class="max-w-7xl mx-auto">
+        <header class="mb-6 pb-4 border-b border-gray-300">
+            <h1 class="text-3xl font-bold text-gray-800">Conferência de LOEC</h1>
+            <p class="text-gray-600">Cole a lista, confira os códigos válidos e escaneie os objetos.</p>
+        </header>
+
+        <!-- NOVO: Resumo de Métricas -->
+        <div id="summaryMetrics" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <!-- Total de Objetos -->
+            <div class="bg-blue-50 p-4 rounded-lg shadow-md border-l-4 border-blue-500">
+                <p class="text-sm text-blue-700 font-medium">Total de Objetos</p>
+                <p id="metricTotal" class="text-2xl font-bold text-blue-900">0</p>
+            </div>
+            <!-- Conferidos -->
+            <div class="bg-green-50 p-4 rounded-lg shadow-md border-l-4 border-green-500">
+                <p class="text-sm text-green-700 font-medium">Conferidos</p>
+                <p id="metricChecked" class="text-2xl font-bold text-green-900">0</p>
+            </div>
+            <!-- Faltantes (A Conferir) -->
+            <div class="bg-yellow-50 p-4 rounded-lg shadow-md border-l-4 border-yellow-500">
+                <p class="text-sm text-yellow-700 font-medium">Faltantes (A Conferir)</p>
+                <p id="metricMissing" class="text-2xl font-bold text-yellow-900">0</p>
+            </div>
+            <!-- Sobra (Códigos Não Listados) -->
+            <div class="bg-red-50 p-4 rounded-lg shadow-md border-l-4 border-red-500">
+                <p class="text-sm text-red-700 font-medium">Sobra (Não Listados)</p>
+                <p id="metricSpurious" class="text-2xl font-bold text-red-900">0</p>
+            </div>
+        </div>
+        
+        <!-- Container principal com layout de 3 colunas (responsivo) -->
+        <div id="main-grid" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+            <!-- Coluna 1: Área de Colagem -->
+            <div class="bg-white p-5 rounded-lg shadow-xl border border-blue-100 h-96 flex flex-col">
+                <h2 class="text-xl font-semibold mb-3 text-blue-600">1. Área de Colagem</h2>
+                <label for="pasteArea" class="text-sm text-gray-500 mb-2">Cole aqui a lista de objetos (incluindo rastreio e endereços):</label>
+                <textarea id="pasteArea"
+                          class="flex-grow w-full p-3 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 transition duration-150 ease-in-out resize-none text-sm"
+                          placeholder="Cole o texto aqui... (Ex: AB123456789XY, Endereço...)"
+                          oninput="processList()">
+                </textarea>
+                <button onclick="processList()" class="mt-4 bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition duration-150 shadow-md">
+                    Processar Lista
+                </button>
+            </div>
+
+            <!-- Coluna 2: Lista Processada de Códigos -->
+            <div class="bg-white p-5 rounded-lg shadow-xl border border-green-100 h-96 flex flex-col">
+                <h2 class="text-xl font-semibold mb-3 text-green-600">Lista de Objetos da LOEC</h2>
+                <div class="text-sm text-gray-500 mb-2 flex justify-between">
+                    <span>Padrão: 2 letras, 9 números, 2 letras.</span>
+                    <span class="font-bold hidden" id="checkedCount"></span>
+                </div>
+                <ul id="processedList" class="flex-grow p-3 border border-gray-300 rounded-md overflow-y-auto bg-gray-50 text-sm">
+                    <!-- Códigos de rastreamento serão injetados aqui -->
+                    <li class="text-gray-400 italic">Cole e processe o texto na coluna ao lado para gerar a lista.</li>
+                </ul>
+            </div>
+
+            <!-- Coluna 3: Conferência com Leitor Óptico -->
+            <div class="bg-white p-5 rounded-lg shadow-xl border border-red-100 h-96 flex flex-col">
+                <h2 class="text-xl font-semibold mb-3 text-red-600">3. Conferência (Scanner)</h2>
+                <label for="scannerInput" class="text-sm text-gray-500 mb-2">Passe o leitor óptico:</label>
+                <input type="text" id="scannerInput"
+                       class="w-full p-3 text-lg border-2 border-red-300 rounded-md focus:ring-red-500 focus:border-red-500 transition duration-150 ease-in-out font-mono uppercase"
+                       placeholder="AB123456789XY"
+                       autocomplete="off">
+
+                <!-- Área de Status -->
+                <div id="statusMessageContainer" class="mt-4 p-3 rounded-lg text-center font-bold transition-all duration-300 transform scale-100 min-h-[50px] flex items-center justify-center">
+                    <span class="text-gray-500 text-sm">Aguardando leitura...</span>
+                </div>
+
+                <div class="mt-auto pt-4 border-t border-gray-200">
+                    <button onclick="resetApp()" class="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg transition duration-150 shadow-md">
+                        Limpar e Recomeçar
+                    </button>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- NOVO: Seção de Resultados (Faltantes e Sobra) -->
+        <div id="resultLists" class="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            <!-- Lista de Objetos Faltantes -->
+            <div class="bg-white p-5 rounded-lg shadow-xl border border-yellow-100 min-h-[250px] flex flex-col">
+                <h2 class="text-xl font-semibold mb-3 text-yellow-600">Faltantes (Não Conferidos)</h2>
+                <ul id="missingList" class="flex-grow p-3 border border-gray-300 rounded-md overflow-y-auto bg-yellow-50 text-sm font-mono">
+                    <li class="text-gray-600 italic">Nenhum item faltante.</li>
+                </ul>
+            </div>
+
+            <!-- Lista de Sobra (Códigos Espúrios) -->
+            <div class="bg-white p-5 rounded-lg shadow-xl border border-red-100 min-h-[250px] flex flex-col">
+                <h2 class="text-xl font-semibold mb-3 text-red-600">Sobra (Códigos Não Listados)</h2>
+                <ul id="spuriousList" class="flex-grow p-3 border border-gray-300 rounded-md overflow-y-auto bg-red-50 text-sm font-mono">
+                    <li class="text-gray-600 italic">Nenhum código lido que não estava na lista.</li>
+                </ul>
+            </div>
+
+        </div>
+
+        <!-- NOVO: Footer com a assinatura -->
+        <footer class="mt-12 pt-4 border-t border-gray-300 text-center text-sm text-gray-500">
+            Desenvolvido por: Marcílio de Sousa Melo
+        </footer>
+    </div>
+
+    <script>
+        // Array para armazenar os códigos de rastreamento e seus status de conferência
+        let trackingCodes = [];
+        // Array para armazenar os códigos lidos que não estão na lista original (Sobra)
+        let spuriousCodes = [];
+        // A expressão regular foi ajustada, removendo o flag /g, para garantir que o match[1] capture o código corretamente.
+        const trackingRegex = /([A-Z]{2}\d{9}[A-Z]{2})/; // Padrão: 2L9N2L (Captura o código)
+
+        const $ = (id) => document.getElementById(id);
+
+        const pasteArea = $('pasteArea');
+        const processedList = $('processedList');
+        const scannerInput = $('scannerInput');
+        const statusMessageContainer = $('statusMessageContainer');
+        
+        // Elementos de Métrica
+        const metricTotal = $('metricTotal');
+        const metricChecked = $('metricChecked');
+        const metricMissing = $('metricMissing');
+        const metricSpurious = $('metricSpurious');
+
+        const missingList = $('missingList');
+        const spuriousList = $('spuriousList');
+        const codeCountSpan = $('codeCount'); // Mantido, mas oculto na Coluna 2 para usar as métricas globais
+
+        /**
+         * 1. Extrai, valida e renderiza os códigos.
+         */
+        function processList() {
+            const rawText = pasteArea.value.toUpperCase();
+            const lines = rawText.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+
+            // 1. Constrói um mapa temporário de novos códigos e seus detalhes (do texto colado)
+            const inputCodesMap = new Map();
+            lines.forEach(line => {
+                // Usando o regex não-global para capturar o código no match[1]
+                const match = line.match(trackingRegex); 
+                
+                if (match) {
+                    const code = match[1];
+                    
+                    // Os detalhes são o restante da linha após o código.
+                    let details = line.replace(code, '').trim();
+                    
+                    if (details === '') {
+                        details = "(Sem Detalhes Adicionais)";
+                    } else if (details.length > 80) {
+                        details = details.substring(0, 80) + '...'; // Limita o tamanho para exibição
+                    }
+                    
+                    // Usa o primeiro detalhe encontrado para o código, para evitar sobrescrita com linhas vazias.
+                    if (!inputCodesMap.has(code)) {
+                        inputCodesMap.set(code, { code: code, details: details });
+                    }
+                }
+            });
+
+            const newTrackingCodes = [];
+            
+            // 2. Mescla com o estado antigo para manter o status 'checked'
+            inputCodesMap.forEach((newCodeItem, code) => {
+                const existingItem = trackingCodes.find(item => item.code === code);
+                
+                newTrackingCodes.push({
+                    code: code,
+                    checked: existingItem ? existingItem.checked : false, // Mantém status
+                    details: newCodeItem.details                          // Usa novos detalhes
+                });
+            });
+            
+            trackingCodes = newTrackingCodes;
+            trackingCodes.sort((a, b) => a.code.localeCompare(b.code));
+
+            // Limpa a lista de sobra ao processar nova lista
+            spuriousCodes = [];
+            
+            renderCodeList();
+            renderResultLists();
+            updateMetrics();
+            scannerInput.focus();
+        }
+
+        /**
+         * Renderiza a lista de códigos na Coluna 2.
+         */
+        function renderCodeList() {
+            processedList.innerHTML = '';
+            
+            if (trackingCodes.length === 0) {
+                processedList.innerHTML = '<li class="text-gray-400 italic">Nenhum código de rastreamento válido encontrado.</li>';
+                return;
+            }
+
+            trackingCodes.forEach(item => {
+                const li = document.createElement('li');
+                li.id = `code-${item.code}`;
+                li.classList.add('p-1', 'pl-2', 'my-1', 'rounded-sm', 'font-mono', 'transition-all', 'duration-300', 'border-l-4');
+
+                if (item.checked) {
+                    li.classList.add('bg-green-100', 'text-gray-600', 'line-through', 'border-green-500');
+                    // Exibe o código na lista principal e o detalhe com menor destaque
+                    // Usando o item.details completo para a lista de conferência, mas limitado na visualização, se for muito longo
+                    li.innerHTML = `<span class="font-bold">${item.code}</span> <span class="text-xs ml-2 text-green-700 break-words">(${item.details.substring(0, 30)}... OK)</span>`;
+                } else {
+                    li.classList.add('bg-white', 'hover:bg-blue-50', 'text-gray-800', 'border-gray-300');
+                    li.innerHTML = `<span class="font-bold">${item.code}</span> <span class="text-xs ml-2 text-gray-500 break-words">${item.details.substring(0, 30)}...</span>`;
+                }
+                processedList.appendChild(li);
+            });
+        }
+
+        /**
+         * Renderiza as listas de Faltantes (com detalhes) e Sobra (apenas código).
+         */
+        function renderResultLists() {
+            // 1. Faltantes
+            const missing = trackingCodes.filter(item => !item.checked);
+            missingList.innerHTML = '';
+            if (missing.length === 0) {
+                missingList.innerHTML = '<li class="text-gray-600 italic">Nenhum item faltante.</li>';
+            } else {
+                missing.forEach(item => {
+                    const li = document.createElement('li');
+                    li.classList.add('p-1', 'pl-2', 'my-1', 'rounded-sm', 'bg-yellow-100', 'border-l-4', 'border-yellow-500', 'text-yellow-900', 'text-xs');
+                    // Exibe código e detalhes/endereço
+                    li.innerHTML = `
+                        <span class="font-bold text-sm">${item.code}</span>
+                        <br class="md:hidden">
+                        <span class="text-yellow-800 break-words">${item.details}</span>
+                    `;
+                    missingList.appendChild(li);
+                });
+            }
+
+            // 2. Sobra (Espúrios) - mantém apenas o código
+            spuriousList.innerHTML = '';
+            if (spuriousCodes.length === 0) {
+                spuriousList.innerHTML = '<li class="text-gray-600 italic">Nenhum código lido que não estava na lista.</li>';
+            } else {
+                spuriousCodes.forEach(code => {
+                    const li = document.createElement('li');
+                    li.classList.add('p-1', 'pl-2', 'my-1', 'rounded-sm', 'bg-red-100', 'border-l-4', 'border-red-500', 'text-red-900', 'font-bold');
+                    li.textContent = code;
+                    spuriousList.appendChild(li);
+                });
+            }
+        }
+
+        /**
+         * Atualiza os valores do painel de métricas.
+         */
+        function updateMetrics() {
+            const total = trackingCodes.length;
+            const checked = trackingCodes.filter(item => item.checked).length;
+            const missing = total - checked;
+            const spurious = spuriousCodes.length;
+
+            metricTotal.textContent = total;
+            metricChecked.textContent = checked;
+            metricMissing.textContent = missing;
+            metricSpurious.textContent = spurious;
+
+            // Alerta se todos estiverem conferidos
+            if (total > 0 && missing === 0) {
+                 displayStatus('SUCESSO! Todos os objetos foram conferidos.', 'bg-green-700 text-white shadow-lg');
+            }
+        }
+
+
+        /**
+         * 2. Lógica de Conferência (Scanner).
+         */
+        scannerInput.addEventListener('keydown', (e) => {
+            // A maioria dos scanners envia um 'Enter' (keyCode 13 ou key 'Enter') no final da leitura
+            if (e.key === 'Enter') {
+                e.preventDefault(); // Impede o envio de formulário ou quebra de linha
+                performCheck(scannerInput.value);
+            }
+        });
+
+        // Adiciona um listener para o evento 'blur' para re-focar o input se ele perder o foco
+        window.addEventListener('blur', () => {
+             // Tenta re-focar apenas se o input for a área de colagem ou o corpo do documento.
+             if (document.activeElement.id !== 'pasteArea' && document.activeElement.tagName !== 'BODY') {
+                scannerInput.focus();
+             }
+        });
+
+        // Tenta re-focar sempre que a página ganhar foco (útil ao clicar fora da janela)
+        window.addEventListener('focus', () => {
+            // Garante que o foco só ocorra se não estivermos digitando na textarea
+            if (document.activeElement.id !== 'pasteArea') {
+                scannerInput.focus();
+            }
+        });
+
+        // Foca no campo de leitura ao carregar a página
+        window.onload = () => {
+             scannerInput.focus();
+             setInitialStatus();
+             updateMetrics();
+             renderResultLists();
+        }
+
+        /**
+         * Executa a lógica de verificação do código lido.
+         * @param {string} scannedCode O código lido pelo scanner.
+         */
+        function performCheck(scannedCode) {
+            const code = scannedCode.trim().toUpperCase();
+
+            // 1. Limpa e re-foca o input imediatamente
+            scannerInput.value = '';
+            setTimeout(() => scannerInput.focus(), 1); // Garante que o foco volte
+
+            if (!code) {
+                displayStatus('Nenhum código lido.', 'bg-yellow-100 text-yellow-800');
+                return;
+            }
+
+            const codeIndex = trackingCodes.findIndex(item => item.code === code);
+
+            if (codeIndex > -1) {
+                // Objeto Encontrado na Lista
+                if (trackingCodes[codeIndex].checked) {
+                    displayStatus('OBJETO JÁ CONFERIDO!', 'bg-yellow-500 text-white shadow-lg');
+                } else {
+                    // Marca como conferido
+                    trackingCodes[codeIndex].checked = true;
+                    displayStatus('OBJETO ENCONTRADO!', 'bg-green-500 text-white shadow-lg');
+
+                    // Atualiza a renderização da lista e métricas
+                    renderCodeList();
+                    renderResultLists();
+                    updateMetrics();
+                    
+                    // Rola a lista para o item marcado
+                    const markedLi = $(`code-${code}`);
+                    if (markedLi) {
+                        markedLi.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                }
+            } else {
+                // Objeto NÃO Encontrado na Lista (Sobra)
+                displayStatus('OBJETO NÃO ENCONTRADO NA LISTA!', 'bg-red-500 text-white shadow-lg');
+                
+                // Adiciona à lista de códigos espúrios se for um código válido e ainda não estiver na lista
+                if (code.match(trackingRegex) && !spuriousCodes.includes(code)) {
+                    spuriousCodes.push(code);
+                    renderResultLists();
+                    updateMetrics();
+                }
+            }
+        }
+
+        /**
+         * Exibe a mensagem de status e programa para limpar.
+         * @param {string} message A mensagem a ser exibida.
+         * @param {string} classes Classes Tailwind para cor e estilo.
+         */
+        function displayStatus(message, classes) {
+            // Remove classes antigas e aplica as novas
+            statusMessageContainer.className = 'mt-4 p-3 rounded-lg text-center font-bold transition-all duration-300 transform scale-100 min-h-[50px] flex items-center justify-center';
+            statusMessageContainer.classList.add(...classes.split(' '));
+            statusMessageContainer.innerHTML = message;
+
+            // Limpa o status após 3 segundos
+            clearTimeout(window.statusTimeout);
+            window.statusTimeout = setTimeout(setInitialStatus, 3000);
+        }
+
+        /**
+         * Define o status inicial/de espera.
+         */
+        function setInitialStatus() {
+            statusMessageContainer.className = 'mt-4 p-3 rounded-lg text-center font-bold transition-all duration-300 transform scale-100 min-h-[50px] flex items-center justify-center';
+            statusMessageContainer.innerHTML = '<span class="text-gray-500 text-sm">Aguardando leitura...</span>';
+            scannerInput.focus();
+        }
+        
+        /**
+         * Limpa todos os dados e recomeça.
+         */
+        function resetApp() {
+            trackingCodes = [];
+            spuriousCodes = [];
+            pasteArea.value = '';
+            renderCodeList();
+            renderResultLists();
+            updateMetrics();
+            setInitialStatus();
+            displayStatus('Sistema Reiniciado.', 'bg-gray-200 text-gray-700');
+        }
+
+    </script>
+</body>
+</html>
